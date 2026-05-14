@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 require('dotenv').config();
 
-// --- 1. KEEP-ALIVE SERVER (FOR RENDER) ---
+// --- 1. KEEP-ALIVE SERVER ---
 const app = express();
 const port = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('Hellʐ is online.'));
@@ -23,11 +23,11 @@ const client = new Client({
     ]
 });
 
-// --- 3. GIVEAWAY MANAGER (FIXED FORMAT) ---
+// --- 3. GIVEAWAY MANAGER STORAGE FIX ---
 const storagePath = path.join(__dirname, 'giveaways.json');
 
-// CRITICAL FIX: Initialize with [] (array) to avoid SyntaxError
-if (!fs.existsSync(storagePath) || fs.readFileSync(storagePath, 'utf8').trim() === "") {
+// CRITICAL: Initialize with [] (array) to avoid SyntaxError
+if (!fs.existsSync(storagePath) || fs.readFileSync(storagePath, 'utf8').trim() === "" || fs.readFileSync(storagePath, 'utf8').trim() === "{}") {
     fs.writeFileSync(storagePath, JSON.stringify([]), 'utf-8');
     console.log('📝 Initialized giveaways.json with an array [].');
 }
@@ -41,7 +41,6 @@ client.giveawaysManager = new GiveawaysManager(client, {
     }
 });
 
-// Global Memory
 client.commands = new Collection();
 global.uwuUsers = new Set(); 
 global.toxicUsers = new Set(); 
@@ -67,17 +66,7 @@ if (fs.existsSync(foldersPath)) {
 
 // --- 5. LOGIC: UWUIFY ---
 function uwuify(text) {
-    let result = text.toLowerCase();
-    const badWords = {
-        'nigger': 'nyigga', 'nigga': 'nyigga',
-        'kill yourself': 'kiww youwsewf', 'kys': 'kiww youwsewf',
-        'fuck': 'fwick', 'stfu': 'shuttie up pwease'
-    };
-    for (const [bad, good] of Object.entries(badWords)) {
-        result = result.replace(new RegExp(bad, 'gi'), good);
-    }
-    result = result.replace(/[lr]/g, 'w').replace(/[LR]/g, 'W');
-    return result + ' uwu';
+    return text.toLowerCase().replace(/[lr]/g, 'w').replace(/[LR]/g, 'W') + ' uwu';
 }
 
 // --- 6. EVENT: VANITY ROLE ---
@@ -85,11 +74,9 @@ client.on('presenceUpdate', async (oldPresence, newPresence) => {
     if (!newPresence?.guild || !newPresence?.member) return;
     const config = global.vanityConfigs.get(newPresence.guild.id);
     if (!config) return;
-
     const hasVanity = newPresence.activities.some(act => 
         act.type === ActivityType.Custom && act.state && act.state.includes(config.string)
     );
-
     try {
         const role = newPresence.guild.roles.cache.get(config.roleId);
         if (!role) return;
@@ -111,12 +98,9 @@ client.giveawaysManager.on('giveawayEnded', (giveaway, winners) => {
 // --- 8. EVENT: MESSAGE TRANSFORM ---
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
-    const isUwu = global.uwuUsers.has(message.author.id);
-    const isToxic = global.toxicUsers.has(message.author.id);
-
-    if (isUwu || isToxic) {
+    if (global.uwuUsers.has(message.author.id) || global.toxicUsers.has(message.author.id)) {
         try {
-            let content = isUwu ? uwuify(message.content) : "stfu #HELLZ";
+            let content = global.uwuUsers.has(message.author.id) ? uwuify(message.content) : "stfu #HELLZ";
             await message.delete().catch(() => {});
             const webhook = await message.channel.createWebhook({ 
                 name: message.member.displayName, 
