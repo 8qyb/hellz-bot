@@ -1,35 +1,34 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const ms = require('ms');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('gstart')
         .setDescription('Start a giveaway')
-        .addStringOption(opt => opt.setName('duration').setDescription('Ex: 1h, 1d, 10m').setRequired(true))
+        .addStringOption(opt => opt.setName('duration').setDescription('Ex: 10m, 1h, 1d').setRequired(true))
         .addIntegerOption(opt => opt.setName('winners').setDescription('Number of winners').setRequired(true))
         .addStringOption(opt => opt.setName('prize').setDescription('What are you giving away?').setRequired(true))
         .addBooleanOption(opt => opt.setName('dm_winner').setDescription('Should the winner be DM\'d?'))
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
     async execute(interaction) {
-        // 1. Defer the reply to prevent "Application did not respond"
-        await interaction.deferReply({ ephemeral: true });
+        // Fix for the warning in image_873718.png: Using flags instead of ephemeral
+        await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
         const durationStr = interaction.options.getString('duration');
         const winnerCount = interaction.options.getInteger('winners');
         const prize = interaction.options.getString('prize');
         const dmWinner = interaction.options.getBoolean('dm_winner') ?? false;
 
-        // 2. Convert duration string to milliseconds
         const milliseconds = ms(durationStr);
 
-        if (!milliseconds || isNaN(milliseconds)) {
-            return interaction.editReply({ content: '❌ Invalid duration! Use formats like `10m`, `1h`, or `1d`.' });
+        // Validation to prevent the "time is not a number" error
+        if (!milliseconds || typeof milliseconds !== 'number') {
+            return interaction.editReply({ content: '❌ Invalid duration format! Use something like `10m`, `1h`, or `1d`.' });
         }
 
         try {
-            // 3. Start the giveaway
             await interaction.client.giveawaysManager.start(interaction.channel, {
-                duration: milliseconds,
+                duration: milliseconds, // This is 'time' for the manager
                 winnerCount: winnerCount,
                 prize: prize,
                 hostedBy: interaction.user,
@@ -40,7 +39,8 @@ module.exports = {
                     winMessage: 'Congratulations, {winners}! You won **{prize}**!',
                     noWinner: 'Giveaway cancelled, no valid participations.',
                     winners: 'Winners:',
-                    endedAt: 'Ended at'
+                    endedAt: 'Ended at',
+                    hostedBy: 'Hosted by: {user}'
                 },
                 extraData: { 
                     dmEnabled: dmWinner 
@@ -51,8 +51,7 @@ module.exports = {
 
         } catch (err) {
             console.error('Giveaway Manager Error:', err);
-            // This will help you see the REAL error in your Render logs
-            await interaction.editReply({ content: `❌ Failed to start giveaway. Error: ${err.message}` });
+            await interaction.editReply({ content: `❌ Failed to start: ${err.message}` });
         }
     }
 };
