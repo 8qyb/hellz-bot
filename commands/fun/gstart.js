@@ -11,7 +11,6 @@ module.exports = {
         .addBooleanOption(opt => opt.setName('dm_winner').setDescription('Should the winner be DM\'d?'))
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
     async execute(interaction) {
-        // Fix for the warning in image_873718.png: Using flags instead of ephemeral
         await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
         const durationStr = interaction.options.getString('duration');
@@ -21,14 +20,15 @@ module.exports = {
 
         const milliseconds = ms(durationStr);
 
-        // Validation to prevent the "time is not a number" error
         if (!milliseconds || typeof milliseconds !== 'number') {
-            return interaction.editReply({ content: '❌ Invalid duration format! Use something like `10m`, `1h`, or `1d`.' });
+            return interaction.editReply({ content: '❌ Invalid duration format! Use `10m`, `1h`, etc.' });
         }
 
         try {
+            // We pass both 'time' and 'duration' to fix the error in image_86b7d6.png
             await interaction.client.giveawaysManager.start(interaction.channel, {
-                duration: milliseconds, // This is 'time' for the manager
+                duration: milliseconds, 
+                time: milliseconds, 
                 winnerCount: winnerCount,
                 prize: prize,
                 hostedBy: interaction.user,
@@ -47,11 +47,11 @@ module.exports = {
                 }
             });
 
-            await interaction.editReply({ content: '✅ Giveaway is now live!' });
+            await interaction.editReply({ content: '✅ Giveaway started successfully!' });
 
         } catch (err) {
             console.error('Giveaway Manager Error:', err);
-            await interaction.editReply({ content: `❌ Failed to start: ${err.message}` });
+            await interaction.editReply({ content: `❌ Manager Error: ${err.message}` });
         }
     }
 };
