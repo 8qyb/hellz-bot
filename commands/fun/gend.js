@@ -1,20 +1,18 @@
-const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('gend')
-        .setDescription('End an active giveaway')
-        .addStringOption(opt => opt.setName('message_id').setDescription('The ID of the giveaway message').setRequired(true))
+        .setDescription('End a giveaway')
+        .addStringOption(opt => opt.setName('query').setDescription('Giveaway ID or Prize Name').setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
     async execute(interaction) {
-        const messageId = interaction.options.getString('message_id');
-
-        interaction.client.giveawaysManager.end(messageId)
-            .then(() => {
-                interaction.reply({ content: '✅ Giveaway ended!', flags: [MessageFlags.Ephemeral] });
-            })
-            .catch((err) => {
-                interaction.reply({ content: `❌ Error: ${err}`, flags: [MessageFlags.Ephemeral] });
-            });
-    },
+        const query = interaction.options.getString('query');
+        try {
+            await interaction.client.giveawaysManager.end(query);
+            await interaction.reply('✅ Giveaway ended!');
+        } catch (e) {
+            await interaction.reply(`❌ Not found or already ended.`);
+        }
+    }
 };

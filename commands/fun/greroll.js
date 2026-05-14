@@ -1,20 +1,18 @@
-const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('greroll')
-        .setDescription('Pick a new winner for a giveaway')
-        .addStringOption(opt => opt.setName('message_id').setDescription('The ID of the giveaway message').setRequired(true))
+        .setDescription('Reroll a giveaway')
+        .addStringOption(opt => opt.setName('query').setDescription('Giveaway ID or Prize Name').setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
     async execute(interaction) {
-        const messageId = interaction.options.getString('message_id');
-
-        interaction.client.giveawaysManager.reroll(messageId)
-            .then(() => {
-                interaction.reply({ content: '✅ New winner picked!', flags: [MessageFlags.Ephemeral] });
-            })
-            .catch((err) => {
-                interaction.reply({ content: `❌ Error: ${err}`, flags: [MessageFlags.Ephemeral] });
-            });
-    },
+        const query = interaction.options.getString('query');
+        try {
+            await interaction.client.giveawaysManager.reroll(query);
+            await interaction.reply('✅ Rerolled!');
+        } catch (e) {
+            await interaction.reply(`❌ No ended giveaway found.`);
+        }
+    }
 };

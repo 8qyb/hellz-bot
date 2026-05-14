@@ -1,17 +1,15 @@
-const { Client, GatewayIntentBits, Collection, REST, Routes, MessageFlags, ActivityType } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, REST, Routes, ActivityType } = require('discord.js');
 const { GiveawaysManager } = require('discord-giveaways');
 const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
 require('dotenv').config();
 
-// --- 1. KEEP-ALIVE SERVER ---
+// --- 1. KEEP-ALIVE SERVER (Pour Render) ---
 const app = express();
-const port = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('Hellʐ is online.'));
-app.listen(port, () => console.log(`Server listening on port ${port}`));
+app.listen(process.env.PORT || 3000);
 
-// --- 2. CLIENT CONFIG ---
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -23,13 +21,10 @@ const client = new Client({
     ]
 });
 
-// --- 3. GIVEAWAY MANAGER STORAGE FIX ---
+// --- 2. STORAGE GIVEAWAY FIX ---
 const storagePath = path.join(__dirname, 'giveaways.json');
-
-// CRITICAL: Initialize with [] (array) to avoid SyntaxError
-if (!fs.existsSync(storagePath) || fs.readFileSync(storagePath, 'utf8').trim() === "" || fs.readFileSync(storagePath, 'utf8').trim() === "{}") {
-    fs.writeFileSync(storagePath, JSON.stringify([]), 'utf-8');
-    console.log('📝 Initialized giveaways.json with an array [].');
+if (!fs.existsSync(storagePath) || fs.readFileSync(storagePath, 'utf8').trim() === "") {
+    fs.writeFileSync(storagePath, '[]', 'utf-8');
 }
 
 client.giveawaysManager = new GiveawaysManager(client, {
@@ -41,63 +36,39 @@ client.giveawaysManager = new GiveawaysManager(client, {
     }
 });
 
+// --- 3. TES VARIABLES (UwU, Toxic, Vanity) ---
 client.commands = new Collection();
 global.uwuUsers = new Set(); 
 global.toxicUsers = new Set(); 
 global.vanityConfigs = new Map();
 
-// --- 4. COMMAND LOADER ---
+// --- 4. CHARGEMENT DES COMMANDES ---
 const commands = [];
 const foldersPath = path.join(__dirname, 'commands');
 if (fs.existsSync(foldersPath)) {
-    const commandFolders = fs.readdirSync(foldersPath);
-    for (const folder of commandFolders) {
+    for (const folder of fs.readdirSync(foldersPath)) {
         const commandsPath = path.join(foldersPath, folder);
-        const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-        for (const file of commandFiles) {
-            const command = require(path.join(commandsPath, file));
-            if (command.data && command.execute) {
-                client.commands.set(command.data.name, command);
-                commands.push(command.data.toJSON());
+        if (fs.lstatSync(commandsPath).isDirectory()) {
+            for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))) {
+                const command = require(path.join(commandsPath, file));
+                if (command.data && command.execute) {
+                    client.commands.set(command.data.name, command);
+                    commands.push(command.data.toJSON());
+                }
             }
         }
     }
 }
 
-// --- 5. LOGIC: UWUIFY ---
+// --- 5. LOGIQUE UWU & TOXIC ---
 function uwuify(text) {
     return text.toLowerCase().replace(/[lr]/g, 'w').replace(/[LR]/g, 'W') + ' uwu';
 }
 
-// --- 6. EVENT: VANITY ROLE ---
-client.on('presenceUpdate', async (oldPresence, newPresence) => {
-    if (!newPresence?.guild || !newPresence?.member) return;
-    const config = global.vanityConfigs.get(newPresence.guild.id);
-    if (!config) return;
-    const hasVanity = newPresence.activities.some(act => 
-        act.type === ActivityType.Custom && act.state && act.state.includes(config.string)
-    );
-    try {
-        const role = newPresence.guild.roles.cache.get(config.roleId);
-        if (!role) return;
-        const hasRole = newPresence.member.roles.cache.has(config.roleId);
-        if (hasVanity && !hasRole) await newPresence.member.roles.add(role);
-        else if (!hasVanity && hasRole) await newPresence.member.roles.remove(role);
-    } catch (err) { console.error("Vanity Error:", err.message); }
-});
-
-// --- 7. EVENT: GIVEAWAY DM ---
-client.giveawaysManager.on('giveawayEnded', (giveaway, winners) => {
-    winners.forEach((member) => {
-        if (giveaway.extraData?.dmEnabled) {
-            member.send(`🏆 **Congrats!** You won **${giveaway.prize}**!`).catch(() => {});
-        }
-    });
-});
-
-// --- 8. EVENT: MESSAGE TRANSFORM ---
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
+
+    // UwULock ou ToxicLock
     if (global.uwuUsers.has(message.author.id) || global.toxicUsers.has(message.author.id)) {
         try {
             let content = global.uwuUsers.has(message.author.id) ? uwuify(message.content) : "stfu #HELLZ";
@@ -112,14 +83,39 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-// --- 9. EVENT: INTERACTIONS ---
+// --- 6. LOGIQUE VANITY ROLE ---
+client.on('presenceUpdate', async (oldPresence, newPresence) => {
+    if (!newPresence?.guild || !newPresence?.member) return;
+    const config = global.vanityConfigs.get(newPresence.guild.id);
+    if (!config) return;
+
+    const hasVanity = newPresence.activities.some(act => 
+        act.type === ActivityType.Custom && act.state && act.state.includes(config.string)
+    );
+
+    try {
+        const role = newPresence.guild.roles.cache.get(config.roleId);
+        if (!role) return;
+        const hasRole = newPresence.member.roles.cache.has(config.roleId);
+        if (hasVanity && !hasRole) await newPresence.member.roles.add(role);
+        else if (!hasVanity && hasRole) await newPresence.member.roles.remove(role);
+    } catch (err) { console.error("Vanity Error:", err.message); }
+});
+
+// --- 7. GESTION DES INTERACTIONS ---
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     const command = client.commands.get(interaction.commandName);
-    if (command) await command.execute(interaction).catch(console.error);
+    if (command) {
+        try {
+            await command.execute(interaction);
+        } catch (error) {
+            console.error(error);
+        }
+    }
 });
 
-// --- 10. LOGIN ---
+// --- 8. SYNC & LOGIN ---
 const rest = new REST().setToken(process.env.TOKEN);
 (async () => {
     try {
@@ -128,5 +124,5 @@ const rest = new REST().setToken(process.env.TOKEN);
     } catch (e) { console.error(e); }
 })();
 
-client.once('ready', () => console.log(`🚀 ${client.user.tag} is online!`));
+client.once('ready', () => console.log(`🚀 ${client.user.tag} est prêt !`));
 client.login(process.env.TOKEN);
