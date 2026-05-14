@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 require('dotenv').config();
 
-// --- 1. KEEP-ALIVE SERVER (FOR RENDER) ---
+// --- 1. KEEP-ALIVE SERVER ---
 const app = express();
 const port = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('Hellʐ is operational.'));
@@ -19,11 +19,18 @@ const client = new Client({
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildPresences,
-        GatewayIntentBits.GuildMessageReactions // FIXED: Essential for Giveaways
+        GatewayIntentBits.GuildMessageReactions 
     ]
 });
 
-// --- 3. GIVEAWAY MANAGER ---
+// --- 3. GIVEAWAY MANAGER STORAGE FIX ---
+// This part checks if the file exists; if not, it creates it with {} inside.
+const storagePath = path.join(__dirname, 'giveaways.json');
+if (!fs.existsSync(storagePath)) {
+    fs.writeFileSync(storagePath, JSON.stringify({}), 'utf-8');
+    console.log('📝 Created missing giveaways.json file.');
+}
+
 client.giveawaysManager = new GiveawaysManager(client, {
     storage: './giveaways.json',
     default: {
@@ -42,17 +49,18 @@ global.vanityConfigs = new Map();
 // --- 4. COMMAND LOADER ---
 const commands = [];
 const foldersPath = path.join(__dirname, 'commands');
-const commandFolders = fs.readdirSync(foldersPath);
-
-for (const folder of commandFolders) {
-    const commandsPath = path.join(foldersPath, folder);
-    const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-    for (const file of commandFiles) {
-        const filePath = path.join(commandsPath, file);
-        const command = require(filePath);
-        if ('data' in command && 'execute' in command) {
-            client.commands.set(command.data.name, command);
-            commands.push(command.data.toJSON());
+if (fs.existsSync(foldersPath)) {
+    const commandFolders = fs.readdirSync(foldersPath);
+    for (const folder of commandFolders) {
+        const commandsPath = path.join(foldersPath, folder);
+        const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+        for (const file of commandFiles) {
+            const filePath = path.join(commandsPath, file);
+            const command = require(filePath);
+            if ('data' in command && 'execute' in command) {
+                client.commands.set(command.data.name, command);
+                commands.push(command.data.toJSON());
+            }
         }
     }
 }
@@ -146,5 +154,10 @@ const rest = new REST().setToken(process.env.TOKEN);
     } catch (e) { console.error(e); }
 })();
 
-client.once('ready', () => console.log(`🚀 ${client.user.tag} is online!`));
+client.once('ready', () => {
+    console.log(`🚀 ${client.user.tag} is online!`);
+    // Debug log to confirm storage is ready
+    console.log(`📂 Storage file status: ${fs.existsSync(storagePath) ? 'Ready' : 'Missing'}`);
+});
+
 client.login(process.env.TOKEN);
