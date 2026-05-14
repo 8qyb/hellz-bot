@@ -60,19 +60,29 @@ for (const folder of commandFolders) {
 function uwuify(text) {
     let result = text.toLowerCase();
     const badWords = {
-        'nigger': 'nyigga', 'nigga': 'nyigga',
-        'kill yourself': 'kiww youwsewf', 'kys': 'kiww youwsewf',
-        'fuck': 'fwick', 'stfu': 'shuttie up pwease'
+        'nigger': 'nyigga', 
+        'nigga': 'nyigga',
+        'kill yourself': 'kiww youwsewf', 
+        'kys': 'kiww youwsewf',
+        'fuck': 'fwick', 
+        'stfu': 'shuttie up pwease'
     };
+    
     for (const [bad, good] of Object.entries(badWords)) {
         result = result.replace(new RegExp(bad, 'gi'), good);
     }
-    result = result.replace(/[lr]/g, 'w').replace(/[LR]/g, 'W').replace(/n([aeiou])/g, 'ny$1').replace(/N([aeiou])/g, 'Ny$1');
+    
+    result = result
+        .replace(/[lr]/g, 'w')
+        .replace(/[LR]/g, 'W')
+        .replace(/n([aeiou])/g, 'ny$1')
+        .replace(/N([aeiou])/g, 'Ny$1');
+
     const endings = [' uwu', ' owo', ' :3', ' >w<'];
     return result + endings[Math.floor(Math.random() * endings.length)];
 }
 
-// --- 6. EVENT: VANITY ROLE ---
+// --- 6. EVENT: DYNAMIC VANITY ROLE ---
 client.on('presenceUpdate', async (oldPresence, newPresence) => {
     if (!newPresence?.guild || !newPresence?.member) return;
     const config = global.vanityConfigs.get(newPresence.guild.id);
@@ -85,9 +95,14 @@ client.on('presenceUpdate', async (oldPresence, newPresence) => {
     try {
         const role = newPresence.guild.roles.cache.get(config.roleId);
         if (!role) return;
-        if (hasVanity && !newPresence.member.roles.cache.has(config.roleId)) await newPresence.member.roles.add(role);
-        else if (!hasVanity && newPresence.member.roles.cache.has(config.roleId)) await newPresence.member.roles.remove(role);
-    } catch (err) { console.error("Vanity Error:", err.message); }
+        if (hasVanity && !newPresence.member.roles.cache.has(config.roleId)) {
+            await newPresence.member.roles.add(role);
+        } else if (!hasVanity && newPresence.member.roles.cache.has(config.roleId)) {
+            await newPresence.member.roles.remove(role);
+        }
+    } catch (err) { 
+        console.error("Vanity Error:", err.message); 
+    }
 });
 
 // --- 7. EVENT: GIVEAWAY DM WINNER ---
@@ -100,7 +115,7 @@ client.giveawaysManager.on('giveawayEnded', (giveaway, winners) => {
     });
 });
 
-// --- 8. EVENT: MESSAGE HANDLING ---
+// --- 8. EVENT: MESSAGE HANDLING (TRANSFORMATIONS) ---
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
     const isUwu = global.uwuUsers.has(message.author.id);
@@ -108,21 +123,35 @@ client.on('messageCreate', async (message) => {
 
     if (isUwu || isToxic) {
         try {
-            let newContent = isUwu ? uwuify(message.content) : message.content.replace(/\b(hi|hello)\b/gi, 'stfu') + ' #HELLZ';
+            let newContent = isUwu 
+                ? uwuify(message.content) 
+                : message.content.replace(/\b(hi|hello)\b/gi, 'stfu') + ' #HELLZ';
+            
             await message.delete().catch(() => {});
-            const webhook = await message.channel.createWebhook({ name: message.member.displayName, avatar: message.author.displayAvatarURL() });
+            
+            const webhook = await message.channel.createWebhook({ 
+                name: message.member.displayName, 
+                avatar: message.author.displayAvatarURL() 
+            });
+            
             await webhook.send(newContent);
             await webhook.delete();
-        } catch (err) { console.error('Webhook Error:', err); }
+        } catch (err) { 
+            console.error('Webhook Error:', err); 
+        }
     }
 });
 
-// --- 9. EVENT: INTERACTIONS ---
+// --- 9. EVENT: SLASH COMMANDS ---
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
-    try { await command.execute(interaction); } catch (e) { console.error(e); }
+    try { 
+        await command.execute(interaction); 
+    } catch (e) { 
+        console.error(e); 
+    }
 });
 
 // --- 10. LOGIN & SYNC ---
@@ -131,7 +160,13 @@ const rest = new REST().setToken(process.env.TOKEN);
     try {
         await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
         console.log('✅ Commands synced.');
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+        console.error(e); 
+    }
 })();
+
+client.once('ready', () => {
+    console.log(`🚀 ${client.user.tag} is ready!`);
+});
 
 client.login(process.env.TOKEN);
