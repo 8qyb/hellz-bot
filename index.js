@@ -1,16 +1,14 @@
-const express = require('express');
-const app = express();
-const port = process.env.PORT || 3000;
-
-app.get('/', (req, res) => res.send('Hellʐ is alive!'));
-app.listen(port, () => console.log(`Listening on port ${port}`));
-
-// ... rest of your index.js code starts here
-
 const { Client, GatewayIntentBits, Collection, REST, Routes, MessageFlags } = require('discord.js');
+const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
 require('dotenv').config();
+
+// --- SERVEUR POUR RENDER (FIX PORT) ---
+const app = express();
+const port = process.env.PORT || 3000;
+app.get('/', (req, res) => res.send('Hellʐ is alive!'));
+app.listen(port, () => console.log(`Serveur prêt sur le port ${port}`));
 
 const client = new Client({
     intents: [
@@ -21,10 +19,11 @@ const client = new Client({
     ]
 });
 
-// Global Memory
+// Mémoire globale pour les locks
 global.uwuUsers = new Set(); 
 global.toxicUsers = new Set(); 
 
+// --- CHARGEMENT DES COMMANDES ---
 client.commands = new Collection();
 const commands = [];
 const foldersPath = path.join(__dirname, 'commands');
@@ -43,31 +42,36 @@ for (const folder of commandFolders) {
     }
 }
 
-const rest = new REST().setToken(process.env.TOKEN);
+// --- LOGIQUE UWUIFY AVANCÉE (TYPE GREED) ---
+function uwuify(text) {
+    let result = text.toLowerCase();
 
-(async () => {
-    try {
-        await rest.put(
-            Routes.applicationCommands(process.env.CLIENT_ID),
-            { body: commands },
-        );
-        console.log('✅ Commands registered successfully.');
-    } catch (error) {
-        console.error(error);
-    }
-})();
+    // Filtre anti-bypass pour les insultes
+    const badWords = {
+        'nigger': 'nyigga',
+        'nigga': 'nyigga',
+        'kill yourself': 'kiww youwsewf',
+        'kys': 'kiww youwsewf',
+        'fuck': 'fwick',
+        'stfu': 'shut up pwease'
+    };
 
-// --- TRANSFORMATION LOGIC ---
-function transformText(text, mode) {
-    if (mode === 'uwu') {
-        return text.replace(/[lr]/g, 'w').replace(/[LR]/g, 'W') + ' uwu';
+    for (const [bad, good] of Object.entries(badWords)) {
+        result = result.replace(new RegExp(bad, 'gi'), good);
     }
-    if (mode === 'toxic') {
-        return text.replace(/\b(hello|hi)\b/gi, 'what do you want').replace(/\b(ok)\b/gi, 'stfu') + ' #HELLZ';
-    }
-    return text;
+
+    result = result
+        .replace(/[lr]/g, 'w')
+        .replace(/[LR]/g, 'W')
+        .replace(/n([aeiou])/g, 'ny$1')
+        .replace(/N([aeiou])/g, 'Ny$1')
+        .replace(/ove/g, 'uv');
+
+    const endings = [' uwu', ' owo', ' :3', ' >w<'];
+    return result + endings[Math.floor(Math.random() * endings.length)];
 }
 
+// --- GESTION DES MESSAGES (TRANSFORMATION) ---
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
 
@@ -76,7 +80,10 @@ client.on('messageCreate', async (message) => {
 
     if (isUwu || isToxic) {
         try {
-            const newText = transformText(message.content, isUwu ? 'uwu' : 'toxic');
+            let newText = message.content;
+            if (isUwu) newText = uwuify(message.content);
+            else if (isToxic) newText = message.content.replace(/\b(hi|hello)\b/gi, 'stfu') + ' #HELLZ';
+
             await message.delete().catch(() => {});
 
             const webhook = await message.channel.createWebhook({
@@ -87,11 +94,12 @@ client.on('messageCreate', async (message) => {
             await webhook.send(newText);
             await webhook.delete();
         } catch (err) {
-            console.error('Replacement error:', err);
+            console.error('Erreur transformation:', err);
         }
     }
 });
 
+// --- GESTION DES SLASH COMMANDS ---
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     const command = client.commands.get(interaction.commandName);
@@ -101,11 +109,18 @@ client.on('interactionCreate', async (interaction) => {
         await command.execute(interaction);
     } catch (error) {
         console.error(error);
-        const replyOptions = { content: 'Error executing command!', flags: [MessageFlags.Ephemeral] };
+        const replyOptions = { content: 'Erreur d\'exécution !', flags: [MessageFlags.Ephemeral] };
         if (interaction.replied || interaction.deferred) await interaction.followUp(replyOptions).catch(() => {});
         else await interaction.reply(replyOptions).catch(() => {});
     }
 });
 
-client.once('ready', () => console.log(`✅ ${client.user.tag} is online!`));
+const rest = new REST().setToken(process.env.TOKEN);
+(async () => {
+    try {
+        await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
+        console.log('✅ Commandes slash enregistrées.');
+    } catch (e) { console.error(e); }
+})();
+
 client.login(process.env.TOKEN);

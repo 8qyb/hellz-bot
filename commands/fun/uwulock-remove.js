@@ -3,28 +3,15 @@ const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('disc
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('uwulock-remove')
-        .setDescription('Release a user from UwU mode')
-        .addUserOption(option => 
-            option.setName('target')
-                .setDescription('The user to release')
-                .setRequired(true))
+        .setDescription('Release someone from Uwulock')
+        .addUserOption(opt => opt.setName('target').setDescription('The Target').setRequired(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
     async execute(interaction) {
         const user = interaction.options.getUser('target');
-
-        // On vérifie si l'utilisateur est bien dans la liste
         if (global.uwuUsers.has(user.id)) {
             global.uwuUsers.delete(user.id);
-            
-            await interaction.reply({ 
-                content: `✅ **${user.username}** has been released from the UwU curse.`, 
-                flags: [MessageFlags.Ephemeral] 
-            });
-        } else {
-            await interaction.reply({ 
-                content: `ℹ️ **${user.username}** is not currently locked.`, 
-                flags: [MessageFlags.Ephemeral] 
-            });
+            return interaction.reply({ content: `✅ **${user.username}** has been released from uwulock !`, flags: [MessageFlags.Ephemeral] });
         }
+        await interaction.reply({ content: `The target wasn't uwulocked`, flags: [MessageFlags.Ephemeral] });
     },
 };
