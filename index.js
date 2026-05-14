@@ -1,4 +1,5 @@
 const { Client, GatewayIntentBits, Collection, REST, Routes, MessageFlags, ActivityType } = require('discord.js');
+const { GiveawaysManager } = require('discord-giveaways');
 const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -17,17 +18,27 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildPresences // REQUIRED for bio/status detection
+        GatewayIntentBits.GuildPresences
     ]
+});
+
+// --- 3. GIVEAWAY MANAGER ---
+client.giveawaysManager = new GiveawaysManager(client, {
+    storage: './giveaways.json',
+    default: {
+        botsCanWin: false,
+        embedColor: '#FF0000',
+        reaction: '🎉'
+    }
 });
 
 // Memory and Collections
 client.commands = new Collection();
 global.uwuUsers = new Set(); 
 global.toxicUsers = new Set(); 
-global.vanityConfigs = new Map(); // Stores { string: ".gg/hellz", roleId: "ID" } per guildId
+global.vanityConfigs = new Map();
 
-// --- 3. COMMAND LOADER ---
+// --- 4. COMMAND LOADER ---
 const commands = [];
 const foldersPath = path.join(__dirname, 'commands');
 const commandFolders = fs.readdirSync(foldersPath);
@@ -45,123 +56,82 @@ for (const folder of commandFolders) {
     }
 }
 
-// --- 4. ADVANCED UWUIFY LOGIC (GREED STYLE) ---
+// --- 5. LOGIC: UWUIFY ---
 function uwuify(text) {
     let result = text.toLowerCase();
-
-    // Anti-bypass filter for slurs/toxicity
     const badWords = {
-        'nigger': 'nyigga',
-        'nigga': 'nyigga',
-        'kill yourself': 'kiww youwsewf',
-        'kys': 'kiww youwsewf',
-        'fuck': 'fwick',
-        'stfu': 'shuttie up pwease'
+        'nigger': 'nyigga', 'nigga': 'nyigga',
+        'kill yourself': 'kiww youwsewf', 'kys': 'kiww youwsewf',
+        'fuck': 'fwick', 'stfu': 'shuttie up pwease'
     };
-
     for (const [bad, good] of Object.entries(badWords)) {
         result = result.replace(new RegExp(bad, 'gi'), good);
     }
-
-    result = result
-        .replace(/[lr]/g, 'w')
-        .replace(/[LR]/g, 'W')
-        .replace(/n([aeiou])/g, 'ny$1')
-        .replace(/N([aeiou])/g, 'Ny$1');
-
+    result = result.replace(/[lr]/g, 'w').replace(/[LR]/g, 'W').replace(/n([aeiou])/g, 'ny$1').replace(/N([aeiou])/g, 'Ny$1');
     const endings = [' uwu', ' owo', ' :3', ' >w<'];
     return result + endings[Math.floor(Math.random() * endings.length)];
 }
 
-// --- 5. EVENT: DYNAMIC VANITY DETECTION ---
+// --- 6. EVENT: VANITY ROLE ---
 client.on('presenceUpdate', async (oldPresence, newPresence) => {
-    if (!newPresence || !newPresence.guild || !newPresence.member) return;
-
-    // Get specific config for the server the user is in
+    if (!newPresence?.guild || !newPresence?.member) return;
     const config = global.vanityConfigs.get(newPresence.guild.id);
-    if (!config) return; 
+    if (!config) return;
 
-    const member = newPresence.member;
-    const activities = newPresence.activities;
-    
-    // Check if Custom Status contains the configured vanity string
-    const hasVanity = activities.some(act => 
+    const hasVanity = newPresence.activities.some(act => 
         act.type === ActivityType.Custom && act.state && act.state.includes(config.string)
     );
 
     try {
-        const role = member.guild.roles.cache.get(config.roleId);
+        const role = newPresence.guild.roles.cache.get(config.roleId);
         if (!role) return;
-
-        if (hasVanity) {
-            if (!member.roles.cache.has(config.roleId)) {
-                await member.roles.add(role);
-                console.log(`[VANITY] Role added to ${member.user.tag} in ${newPresence.guild.name}`);
-            }
-        } else {
-            if (member.roles.cache.has(config.roleId)) {
-                await member.roles.remove(role);
-                console.log(`[VANITY] Role removed from ${member.user.tag} in ${newPresence.guild.name}`);
-            }
-        }
-    } catch (err) {
-        console.error("Vanity Role Error:", err.message);
-    }
+        if (hasVanity && !newPresence.member.roles.cache.has(config.roleId)) await newPresence.member.roles.add(role);
+        else if (!hasVanity && newPresence.member.roles.cache.has(config.roleId)) await newPresence.member.roles.remove(role);
+    } catch (err) { console.error("Vanity Error:", err.message); }
 });
 
-// --- 6. EVENT: MESSAGE HANDLING (UWU/TOXIC LOCK) ---
+// --- 7. EVENT: GIVEAWAY DM WINNER ---
+client.giveawaysManager.on('giveawayEnded', (giveaway, winners) => {
+    winners.forEach((member) => {
+        if (giveaway.extraData && giveaway.extraData.dmEnabled) {
+            member.send(`🏆 **Congrats!** You won **${giveaway.prize}** in **${member.guild.name}**!`)
+                .catch(() => console.log(`Failed to DM ${member.user.tag}`));
+        }
+    });
+});
+
+// --- 8. EVENT: MESSAGE HANDLING ---
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
-
     const isUwu = global.uwuUsers.has(message.author.id);
     const isToxic = global.toxicUsers.has(message.author.id);
 
     if (isUwu || isToxic) {
         try {
             let newContent = isUwu ? uwuify(message.content) : message.content.replace(/\b(hi|hello)\b/gi, 'stfu') + ' #HELLZ';
-            
             await message.delete().catch(() => {});
-
-            const webhook = await message.channel.createWebhook({
-                name: message.member.displayName,
-                avatar: message.author.displayAvatarURL(),
-            });
-
+            const webhook = await message.channel.createWebhook({ name: message.member.displayName, avatar: message.author.displayAvatarURL() });
             await webhook.send(newContent);
             await webhook.delete();
-        } catch (err) {
-            console.error('Webhook Error:', err);
-        }
+        } catch (err) { console.error('Webhook Error:', err); }
     }
 });
 
-// --- 7. EVENT: SLASH COMMANDS ---
+// --- 9. EVENT: INTERACTIONS ---
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
-
-    try {
-        await command.execute(interaction);
-    } catch (error) {
-        console.error(error);
-        const reply = { content: 'Execution error!', flags: [MessageFlags.Ephemeral] };
-        if (interaction.replied || interaction.deferred) await interaction.followUp(reply).catch(() => {});
-        else await interaction.reply(reply).catch(() => {});
-    }
+    try { await command.execute(interaction); } catch (e) { console.error(e); }
 });
 
-// --- 8. BOT ONLINE ---
+// --- 10. LOGIN & SYNC ---
 const rest = new REST().setToken(process.env.TOKEN);
 (async () => {
     try {
         await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
-        console.log('✅ Slash commands synced.');
+        console.log('✅ Commands synced.');
     } catch (e) { console.error(e); }
 })();
-
-client.once('ready', () => {
-    console.log(`🚀 ${client.user.tag} is ready!`);
-});
 
 client.login(process.env.TOKEN);

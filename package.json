@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "dependencies": {
+    "discord-giveaways": "^4.4.3",
     "discord.js": "^14.14.1",
     "dotenv": "^16.4.5",
     "express": "^5.2.1",
