@@ -5,53 +5,39 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('gstart')
         .setDescription('Start a giveaway')
-        .addStringOption(opt => opt.setName('duration').setDescription('Ex: 10m, 1h, 1d').setRequired(true))
+        .addStringOption(opt => opt.setName('duration').setDescription('Ex: 10m, 1h').setRequired(true))
         .addIntegerOption(opt => opt.setName('winners').setDescription('Number of winners').setRequired(true))
         .addStringOption(opt => opt.setName('prize').setDescription('What are you giving away?').setRequired(true))
-        .addBooleanOption(opt => opt.setName('dm_winner').setDescription('Should the winner be DM\'d?'))
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
     async execute(interaction) {
+        // Use the new flag format to clear the thinking state quickly
         await interaction.deferReply({ flags: [MessageFlags.Ephemeral] });
 
-        const durationStr = interaction.options.getString('duration');
-        const winnerCount = interaction.options.getInteger('winners');
-        const prize = interaction.options.getString('prize');
-        const dmWinner = interaction.options.getBoolean('dm_winner') ?? false;
+        const duration = interaction.options.getString('duration');
+        const milliseconds = ms(duration);
 
-        const milliseconds = ms(durationStr);
-
-        if (!milliseconds || typeof milliseconds !== 'number') {
-            return interaction.editReply({ content: '❌ Invalid duration format! Use `10m`, `1h`, etc.' });
-        }
+        if (!milliseconds) return interaction.editReply("❌ Invalid duration.");
 
         try {
-            // We pass both 'time' and 'duration' to fix the error in image_86b7d6.png
             await interaction.client.giveawaysManager.start(interaction.channel, {
-                duration: milliseconds, 
-                time: milliseconds, 
-                winnerCount: winnerCount,
-                prize: prize,
-                hostedBy: interaction.user,
+                duration: milliseconds,
+                winnerCount: interaction.options.getInteger('winners'),
+                prize: interaction.options.getString('prize'),
                 messages: {
-                    giveaway: '🎉 **GIVEAWAY STARTED** 🎉',
-                    giveawayEnded: '🎉 **GIVEAWAY ENDED** 🎉',
-                    inviteToParticipate: 'React with 🎉 to participate!',
-                    winMessage: 'Congratulations, {winners}! You won **{prize}**!',
-                    noWinner: 'Giveaway cancelled, no valid participations.',
+                    giveaway: '🎉 **GIVEAWAY** 🎉',
+                    giveawayEnded: '🎉 **ENDED** 🎉',
+                    inviteToParticipate: 'React with 🎉 to enter!',
+                    winMessage: 'Congrats {winners}! You won **{prize}**!',
+                    noWinner: 'No valid entrants.',
                     winners: 'Winners:',
-                    endedAt: 'Ended at',
-                    hostedBy: 'Hosted by: {user}'
-                },
-                extraData: { 
-                    dmEnabled: dmWinner 
+                    endedAt: 'Ended at'
                 }
             });
 
-            await interaction.editReply({ content: '✅ Giveaway started successfully!' });
-
+            return interaction.editReply("✅ Giveaway started!");
         } catch (err) {
-            console.error('Giveaway Manager Error:', err);
-            await interaction.editReply({ content: `❌ Manager Error: ${err.message}` });
+            console.error(err);
+            return interaction.editReply(`❌ Error: ${err.message}`);
         }
     }
 };
