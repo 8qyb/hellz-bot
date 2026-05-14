@@ -5,13 +5,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 require('dotenv').config();
 
-// --- 1. KEEP-ALIVE SERVER ---
+// --- 1. KEEP-ALIVE SERVER (FOR RENDER) ---
 const app = express();
 const port = process.env.PORT || 3000;
-app.get('/', (req, res) => res.send('Hellʐ is operational.'));
-app.listen(port, () => console.log(`Live on port ${port}`));
+app.get('/', (req, res) => res.send('Hellʐ is online.'));
+app.listen(port, () => console.log(`Server listening on port ${port}`));
 
-// --- 2. CLIENT CONFIGURATION ---
+// --- 2. CLIENT CONFIG ---
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -23,12 +23,13 @@ const client = new Client({
     ]
 });
 
-// --- 3. GIVEAWAY MANAGER STORAGE FIX ---
-// This part checks if the file exists; if not, it creates it with {} inside.
+// --- 3. GIVEAWAY MANAGER (FIXED FORMAT) ---
 const storagePath = path.join(__dirname, 'giveaways.json');
-if (!fs.existsSync(storagePath)) {
-    fs.writeFileSync(storagePath, JSON.stringify({}), 'utf-8');
-    console.log('📝 Created missing giveaways.json file.');
+
+// CRITICAL FIX: Initialize with [] (array) to avoid SyntaxError
+if (!fs.existsSync(storagePath) || fs.readFileSync(storagePath, 'utf8').trim() === "") {
+    fs.writeFileSync(storagePath, JSON.stringify([]), 'utf-8');
+    console.log('📝 Initialized giveaways.json with an array [].');
 }
 
 client.giveawaysManager = new GiveawaysManager(client, {
@@ -55,9 +56,8 @@ if (fs.existsSync(foldersPath)) {
         const commandsPath = path.join(foldersPath, folder);
         const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
         for (const file of commandFiles) {
-            const filePath = path.join(commandsPath, file);
-            const command = require(filePath);
-            if ('data' in command && 'execute' in command) {
+            const command = require(path.join(commandsPath, file));
+            if (command.data && command.execute) {
                 client.commands.set(command.data.name, command);
                 commands.push(command.data.toJSON());
             }
@@ -76,15 +76,11 @@ function uwuify(text) {
     for (const [bad, good] of Object.entries(badWords)) {
         result = result.replace(new RegExp(bad, 'gi'), good);
     }
-    result = result
-        .replace(/[lr]/g, 'w').replace(/[LR]/g, 'W')
-        .replace(/n([aeiou])/g, 'ny$1').replace(/N([aeiou])/g, 'Ny$1');
-    
-    const endings = [' uwu', ' owo', ' :3', ' >w<'];
-    return result + endings[Math.floor(Math.random() * endings.length)];
+    result = result.replace(/[lr]/g, 'w').replace(/[LR]/g, 'W');
+    return result + ' uwu';
 }
 
-// --- 6. EVENT: DYNAMIC VANITY ROLE ---
+// --- 6. EVENT: VANITY ROLE ---
 client.on('presenceUpdate', async (oldPresence, newPresence) => {
     if (!newPresence?.guild || !newPresence?.member) return;
     const config = global.vanityConfigs.get(newPresence.guild.id);
@@ -97,26 +93,22 @@ client.on('presenceUpdate', async (oldPresence, newPresence) => {
     try {
         const role = newPresence.guild.roles.cache.get(config.roleId);
         if (!role) return;
-        
         const hasRole = newPresence.member.roles.cache.has(config.roleId);
         if (hasVanity && !hasRole) await newPresence.member.roles.add(role);
         else if (!hasVanity && hasRole) await newPresence.member.roles.remove(role);
-    } catch (err) { 
-        console.error("Vanity Error:", err.message); 
-    }
+    } catch (err) { console.error("Vanity Error:", err.message); }
 });
 
-// --- 7. EVENT: GIVEAWAY DM WINNER ---
+// --- 7. EVENT: GIVEAWAY DM ---
 client.giveawaysManager.on('giveawayEnded', (giveaway, winners) => {
     winners.forEach((member) => {
-        if (giveaway.extraData && giveaway.extraData.dmEnabled) {
-            member.send(`🏆 **Congratulations!** You won **${giveaway.prize}** in **${member.guild.name}**!`)
-                .catch(() => console.log(`Could not DM ${member.user.tag}`));
+        if (giveaway.extraData?.dmEnabled) {
+            member.send(`🏆 **Congrats!** You won **${giveaway.prize}**!`).catch(() => {});
         }
     });
 });
 
-// --- 8. EVENT: MESSAGE TRANSFORMATIONS ---
+// --- 8. EVENT: MESSAGE TRANSFORM ---
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !message.guild) return;
     const isUwu = global.uwuUsers.has(message.author.id);
@@ -124,9 +116,8 @@ client.on('messageCreate', async (message) => {
 
     if (isUwu || isToxic) {
         try {
-            let content = isUwu ? uwuify(message.content) : message.content.replace(/\b(hi|hello)\b/gi, 'stfu') + ' #HELLZ';
+            let content = isUwu ? uwuify(message.content) : "stfu #HELLZ";
             await message.delete().catch(() => {});
-            
             const webhook = await message.channel.createWebhook({ 
                 name: message.member.displayName, 
                 avatar: message.author.displayAvatarURL() 
@@ -141,23 +132,17 @@ client.on('messageCreate', async (message) => {
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     const command = client.commands.get(interaction.commandName);
-    if (!command) return;
-    try { await command.execute(interaction); } catch (e) { console.error(e); }
+    if (command) await command.execute(interaction).catch(console.error);
 });
 
-// --- 10. DEPLOY & LOGIN ---
+// --- 10. LOGIN ---
 const rest = new REST().setToken(process.env.TOKEN);
 (async () => {
     try {
         await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
-        console.log('✅ Hellʐ Commands Synced.');
+        console.log('✅ Commands Synced.');
     } catch (e) { console.error(e); }
 })();
 
-client.once('ready', () => {
-    console.log(`🚀 ${client.user.tag} is online!`);
-    // Debug log to confirm storage is ready
-    console.log(`📂 Storage file status: ${fs.existsSync(storagePath) ? 'Ready' : 'Missing'}`);
-});
-
+client.once('ready', () => console.log(`🚀 ${client.user.tag} is online!`));
 client.login(process.env.TOKEN);
